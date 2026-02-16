@@ -142,6 +142,7 @@ pnpm security:scan
 ## Documentation
 
 - PRD: `prd.md`
+- Changelog: `CHANGELOG.md`
 - Contributor/agent rules: `AGENTS.md`
 - Onboarding docs: `docs/onboarding/`
 
