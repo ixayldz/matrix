@@ -1,0 +1,32 @@
+{
+  "name": "@matrix/acceptance",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:report": "vitest run --reporter=json --outputFile=acceptance-report.json",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist acceptance-report.json"
+  },
+  "dependencies": {
+    "@matrix/cli": "workspace:*",
+    "@matrix/context-engine": "workspace:*",
+    "@matrix/core": "workspace:*",
+    "@matrix/mcp": "workspace:*",
+    "@matrix/models": "workspace:*",
+    "@matrix/security": "workspace:*",
+    "@matrix/tui": "workspace:*"
+  }
+}

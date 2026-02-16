@@ -1,0 +1,41 @@
+{
+  "name": "@matrix/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "matrix": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "start": "node ./dist/index.js"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1",
+    "conf": "^12.0.0",
+    "zod": "^3.22.4",
+    "@matrix/core": "workspace:*",
+    "@matrix/tools": "workspace:*",
+    "@matrix/security": "workspace:*",
+    "@matrix/models": "workspace:*",
+    "@matrix/prompts": "workspace:*",
+    "@matrix/context-engine": "workspace:*",
+    "@matrix/auth": "workspace:*",
+    "@matrix/mcp": "workspace:*",
+    "@matrix/tui": "workspace:*"
+  }
+}

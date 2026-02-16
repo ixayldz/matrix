@@ -1,0 +1,42 @@
+{
+  "name": "@matrix/security",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./guardian-gate": {
+      "types": "./dist/guardian-gate.d.ts",
+      "import": "./dist/guardian-gate.js"
+    },
+    "./policy-engine": {
+      "types": "./dist/policy-engine.d.ts",
+      "import": "./dist/policy-engine.js"
+    },
+    "./sandbox": {
+      "types": "./dist/sandbox/index.d.ts",
+      "import": "./dist/sandbox/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "optionalDependencies": {
+    "isolated-vm": "^4.6.0"
+  },
+  "peerDependencies": {
+    "@matrix/core": "workspace:*"
+  }
+}

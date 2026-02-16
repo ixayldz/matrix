@@ -1,0 +1,38 @@
+{
+  "name": "matrix-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Matrix CLI - Agentic Development Runtime",
+  "keywords": [
+    "cli",
+    "ai",
+    "agent",
+    "development",
+    "runtime"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "security:scan": "node scripts/security-scan.mjs",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck",
+    "matrix": "pnpm --filter @matrix/cli run start"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "turbo": "^2.0.0",
+    "tsup": "^8.0.0",
+    "vitest": "^1.2.0",
+    "@vitest/coverage-v8": "^1.2.0"
+  }
+}

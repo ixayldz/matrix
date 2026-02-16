@@ -1,0 +1,30 @@
+{
+  "name": "@matrix/auth",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "keytar": "^7.9.0",
+    "libsodium-wrappers": "^0.7.13",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/keytar": "^4.4.2",
+    "@types/libsodium-wrappers": "^0.7.13"
+  }
+}
