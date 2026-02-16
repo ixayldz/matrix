@@ -9,6 +9,7 @@
 
 ## Add a Key
 ```bash
+pnpm matrix auth login openai --open
 pnpm matrix auth add openai --key <YOUR_API_KEY>
 ```
 If keychain is unavailable, use fallback vault password:
@@ -19,6 +20,12 @@ pnpm matrix auth add openai --key <YOUR_API_KEY> --vault-password <PASSWORD>
 ## Check Key Status
 ```bash
 pnpm matrix auth status
+```
+Inside TUI you can also run:
+```bash
+/auth status
+/login openai
+/auth set openai <YOUR_API_KEY>
 ```
 
 ## Remove a Key
@@ -31,4 +38,3 @@ pnpm matrix auth remove openai
 - Prefer OS keychain when available.
 - Fallback storage is encrypted local vault (`~/.matrix/keys.enc`).
 - Never commit keys in `.env`, source files, or test fixtures.
-

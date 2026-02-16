@@ -1,116 +1,140 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useStore } from '../store.js';
 import type { Message } from '@matrix/core';
 import { COLORS } from './Layout.js';
 
-/**
- * Render a single message
- */
-function MessageBubble({ message }: { message: Message }) {
-  const roleColors: Record<string, string> = {
-    system: COLORS.textDim,
-    user: COLORS.primary,       // Neon green for user
-    assistant: COLORS.secondary, // Blue for assistant
-    tool: COLORS.warning,        // Gold for tool
-  };
-
-  const roleLabels: Record<string, string> = {
-    system: 'System',
-    user: 'You',
-    assistant: 'Assistant',
-    tool: 'Tool',
-  };
-
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Box>
-        <Text bold color={roleColors[message.role] || COLORS.text}>
-          [{roleLabels[message.role] || message.role}]
-        </Text>
-      </Box>
-      <Box marginLeft={2} flexDirection="column">
-        <MessageContent content={message.content} />
-      </Box>
-    </Box>
-  );
+interface ChatLine {
+  key: string;
+  text: string;
+  color?: string;
+  bold?: boolean;
+  dim?: boolean;
 }
 
-/**
- * Render message content with code block support
- */
-function MessageContent({ content }: { content: string }) {
-  // Simple code block detection
-  const parts = content.split(/(```[\s\S]*?```)/g);
+const ROLE_META: Record<string, { label: string; color: string }> = {
+  system: { label: 'System', color: COLORS.textDim },
+  user: { label: 'You', color: COLORS.primary },
+  assistant: { label: 'Assistant', color: COLORS.secondary },
+  tool: { label: 'Tool', color: COLORS.warning },
+};
 
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (part.startsWith('```')) {
-          // Code block
-          const lines = part.slice(3, -3).split('\n');
-          const language = lines[0] || '';
-          const code = lines.slice(1).join('\n');
-
-          return (
-            <Box key={index} flexDirection="column" marginY={1}>
-              {language && (
-                <Text dimColor backgroundColor={COLORS.border}>
-                  {language}
-                </Text>
-              )}
-              <Text color={COLORS.primary}>{code}</Text>
-            </Box>
-          );
-        }
-
-        // Regular text
-        return (
-          <Text key={index}>{part}</Text>
-        );
-      })}
-    </>
-  );
+function truncateLine(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  if (maxChars <= 3) {
+    return value.slice(0, maxChars);
+  }
+  return `${value.slice(0, maxChars - 3)}...`;
 }
 
-/**
- * Chat panel component
- */
-export function ChatPanel() {
-  const { messages, isStreaming, streamingContent } = useStore();
-  const scrollRef = useRef<number>(0);
+function toMessageLines(message: Message, index: number, maxChars: number): ChatLine[] {
+  const meta = ROLE_META[message.role] ?? {
+    label: message.role,
+    color: COLORS.text,
+  };
+  const rows: ChatLine[] = [
+    {
+      key: `h-${index}`,
+      text: `[${meta.label}]`,
+      color: meta.color,
+      bold: true,
+    },
+  ];
 
-  // Auto-scroll to bottom on new messages
+  const contentLines = message.content.replace(/\r\n/g, '\n').split('\n');
+  for (let i = 0; i < contentLines.length; i += 1) {
+    const line = contentLines[i] ?? '';
+    rows.push({
+      key: `m-${index}-${i}`,
+      text: `  ${truncateLine(line, maxChars)}`,
+    });
+  }
+
+  rows.push({
+    key: `sp-${index}`,
+    text: ' ',
+    dim: true,
+  });
+
+  return rows;
+}
+
+export function ChatPanel({ viewportRows = 14 }: { viewportRows?: number }) {
+  const {
+    messages,
+    isStreaming,
+    streamingContent,
+    scrollOffsets,
+    setScrollOffset,
+  } = useStore();
+
+  const rows = Math.max(6, viewportRows);
+  const maxChars = Math.max(24, (process.stdout.columns ?? 120) - 20);
+  const lines: ChatLine[] = messages.flatMap((message, index) =>
+    toMessageLines(message, index, maxChars)
+  );
+
+  if (isStreaming && streamingContent) {
+    lines.push({
+      key: 'stream-h',
+      text: '[Assistant] (streaming...)',
+      color: COLORS.secondary,
+      bold: true,
+    });
+    const streamingLines = streamingContent.replace(/\r\n/g, '\n').split('\n');
+    for (let i = 0; i < streamingLines.length; i += 1) {
+      const line = streamingLines[i] ?? '';
+      lines.push({
+        key: `stream-${i}`,
+        text: `  ${truncateLine(line, maxChars)}`,
+      });
+    }
+  }
+
+  if (lines.length === 0) {
+    lines.push({
+      key: 'empty',
+      text: 'No messages yet. Start with a requirement or /plan.',
+      dim: true,
+    });
+  }
+
+  const showIndicator = lines.length > rows;
+  const contentRows = Math.max(3, rows - (showIndicator ? 1 : 0));
+  const maxOffset = Math.max(0, lines.length - contentRows);
+  const offsetRaw = scrollOffsets.chat;
+  const offset = Math.min(maxOffset, Math.max(0, offsetRaw));
+
   useEffect(() => {
-    scrollRef.current = messages.length;
-  }, [messages.length]);
+    if (offset !== offsetRaw) {
+      setScrollOffset('chat', offset);
+    }
+  }, [offset, offsetRaw, setScrollOffset]);
+
+  const startIndex = Math.max(0, lines.length - contentRows - offset);
+  const visibleLines = lines.slice(startIndex, startIndex + contentRows);
 
   return (
     <Box flexDirection="column" height="100%">
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
-        {messages.slice(-20).map((message, index) => (
-          <MessageBubble key={index} message={message} />
+        {visibleLines.map((line) => (
+          <Text
+            key={line.key}
+            wrap="truncate-end"
+            {...(line.color ? { color: line.color } : {})}
+            {...(line.bold ? { bold: true } : {})}
+            {...(line.dim ? { dimColor: true } : {})}
+          >
+            {line.text || ' '}
+          </Text>
         ))}
-
-        {/* Streaming content */}
-        {isStreaming && streamingContent && (
-          <Box flexDirection="column" marginBottom={1}>
-            <Box>
-              <Text bold color={COLORS.secondary}>[Assistant]</Text>
-              <Text dimColor> (streaming...)</Text>
-            </Box>
-            <Box marginLeft={2}>
-              <Text>{streamingContent}</Text>
-            </Box>
-          </Box>
-        )}
       </Box>
-
-      {/* Scroll indicator */}
-      {messages.length > 20 && (
+      {showIndicator && (
         <Box justifyContent="center">
           <Text dimColor>
-            Showing last 20 of {messages.length} messages
+            chat {startIndex + 1}-{Math.min(lines.length, startIndex + contentRows)} / {lines.length} | offset {offset}/{maxOffset}
           </Text>
         </Box>
       )}
@@ -129,12 +153,9 @@ export function EventStream() {
       <Text bold color={COLORS.primary}>Event Stream</Text>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         {messages.slice(-10).map((message, index) => (
-          <Box key={index}>
-            <Text dimColor>
-              [{new Date().toLocaleTimeString()}]
-            </Text>
-            <Text> {message.role}: {message.content.slice(0, 50)}...</Text>
-          </Box>
+          <Text key={index} wrap="truncate-end">
+            {message.role}: {truncateLine(message.content, 80)}
+          </Text>
         ))}
       </Box>
     </Box>

@@ -19,6 +19,7 @@ This creates `.matrix/config.json`, `.matrix/mcp.json`, `MATRIX.md`, and `AGENTS
 
 ## 3) Add Provider Key
 ```bash
+pnpm matrix auth login openai --open
 pnpm matrix auth add openai --key <YOUR_API_KEY>
 ```
 
@@ -32,10 +33,9 @@ Expected: `status` should be `pass` or `warn`.
 ```bash
 pnpm matrix run
 ```
-Then run flow commands: `/plan`, `/build`, `/qa`, `/review`.
+Then run flow commands: `/new`, `/login openai` (if needed), `/plan`, `/build`, `/qa`, `/review`.
 
 ## 6) Optional Readiness Snapshot
 ```bash
 pnpm matrix readiness --json
 ```
-

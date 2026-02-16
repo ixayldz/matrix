@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { WorkflowState, Message, DiffInfo, AgentType } from '@matrix/core';
 
+export type ProviderName = 'openai' | 'anthropic' | 'glm' | 'minimax' | 'kimi';
+
 /**
  * TUI State
  */
@@ -49,10 +51,22 @@ export interface TUIState {
   // Model
   currentModel: string;
   setCurrentModel: (model: string) => void;
+  currentProvider: ProviderName;
+  setCurrentProvider: (provider: ProviderName) => void;
 
   // Panel focus
   focusedPanel: 'chat' | 'files' | 'diff' | 'session';
   setFocusedPanel: (panel: 'chat' | 'files' | 'diff' | 'session') => void;
+
+  // Panel scroll offsets
+  scrollOffsets: {
+    chat: number;
+    files: number;
+    diff: number;
+    session: number;
+  };
+  setScrollOffset: (panel: 'chat' | 'files' | 'diff' | 'session', offset: number) => void;
+  scrollBy: (panel: 'chat' | 'files' | 'diff' | 'session', delta: number) => void;
 
   // Status
   statusMessage: string;
@@ -125,10 +139,42 @@ export const useStore = create<TUIState>((set) => ({
   // Model
   currentModel: 'gpt-5.3-codex',
   setCurrentModel: (model: string) => set({ currentModel: model }),
+  currentProvider: 'openai',
+  setCurrentProvider: (provider: ProviderName) => set({ currentProvider: provider }),
 
   // Panel focus
   focusedPanel: 'chat',
   setFocusedPanel: (panel: 'chat' | 'files' | 'diff' | 'session') => set({ focusedPanel: panel }),
+
+  // Panel scroll offsets
+  scrollOffsets: {
+    chat: 0,
+    files: 0,
+    diff: 0,
+    session: 0,
+  },
+  setScrollOffset: (panel: 'chat' | 'files' | 'diff' | 'session', offset: number) =>
+    set((state: TUIState) => {
+      const normalized = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0;
+      return {
+        scrollOffsets: {
+          ...state.scrollOffsets,
+          [panel]: normalized,
+        },
+      };
+    }),
+  scrollBy: (panel: 'chat' | 'files' | 'diff' | 'session', delta: number) =>
+    set((state: TUIState) => {
+      const current = state.scrollOffsets[panel] ?? 0;
+      const normalizedDelta = Number.isFinite(delta) ? Math.trunc(delta) : 0;
+      const next = Math.max(0, current + normalizedDelta);
+      return {
+        scrollOffsets: {
+          ...state.scrollOffsets,
+          [panel]: next,
+        },
+      };
+    }),
 
   // Status
   statusMessage: 'Ready',

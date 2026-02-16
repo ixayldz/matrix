@@ -17,6 +17,7 @@ import {
 export interface WorkflowRuntimeConfig {
   cwd: string;
   model: string;
+  provider?: string;
   projectId?: string;
   approvalMode?: 'strict' | 'balanced' | 'fast';
   persistEvents?: boolean;
@@ -114,6 +115,7 @@ export class WorkflowRuntime {
   private facade: WorkflowFacade;
   private currentAgent: AgentType | null = null;
   private pendingDiffs: DiffInfo[] = [];
+  private activeModel: string;
 
   constructor(config: WorkflowRuntimeConfig) {
     this.orchestrator = createOrchestrator({
@@ -124,7 +126,8 @@ export class WorkflowRuntime {
     });
 
     this.facade = createWorkflowFacade(this.orchestrator);
-    this.registerDefaultAgents(config.model);
+    this.activeModel = config.model;
+    this.registerDefaultAgents(this.activeModel);
     this.bindEvents();
   }
 
@@ -151,6 +154,19 @@ export class WorkflowRuntime {
     }));
   }
 
+  getModel(): string {
+    return this.activeModel;
+  }
+
+  setModel(model: string): void {
+    const normalized = model.trim();
+    if (!normalized) {
+      return;
+    }
+    this.activeModel = normalized;
+    this.registerDefaultAgents(this.activeModel);
+  }
+
   async runFromInput(input: string): Promise<WorkflowCommandResult> {
     const trimmed = input.trim();
     if (!trimmed.startsWith('/')) {
@@ -162,6 +178,20 @@ export class WorkflowRuntime {
     const args = rawArgs.map((value) => value.toLowerCase());
 
     switch (command) {
+      case 'model':
+        if (args[0]) {
+          this.setModel(args[0]);
+          return {
+            status: 'success',
+            state: this.facade.getState(),
+            message: `Model switched to ${this.activeModel}.`,
+          };
+        }
+        return {
+          status: 'success',
+          state: this.facade.getState(),
+          message: `Current model: ${this.activeModel}.`,
+        };
       case 'plan': {
         const decision = args[0];
         if (decision && ['approve', 'revise', 'deny', 'ask'].includes(decision)) {

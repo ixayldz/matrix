@@ -1,29 +1,52 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useStore } from '../store.js';
 import type { FileNode } from '@matrix/context-engine';
+
+interface FlatFileNode {
+  path: string;
+  name: string;
+  depth: number;
+  type: FileNode['type'];
+}
+
+function flattenTree(node: FileNode, depth = 0): FlatFileNode[] {
+  const rows: FlatFileNode[] = [
+    {
+      path: node.path,
+      name: node.name,
+      depth,
+      type: node.type,
+    },
+  ];
+  if (node.children?.length) {
+    for (const child of node.children) {
+      rows.push(...flattenTree(child, depth + 1));
+    }
+  }
+  return rows;
+}
 
 /**
  * Single file tree item
  */
 function FileTreeItem({
   node,
-  depth = 0,
   isSelected = false,
   isModified = false,
 }: {
-  node: FileNode;
-  depth?: number;
+  node: FlatFileNode;
   isSelected?: boolean;
   isModified?: boolean;
 }) {
-  const indent = '  '.repeat(depth);
-  const icon = node.type === 'directory' ? '📁' : '📄';
+  const indent = '  '.repeat(node.depth);
+  const icon = node.type === 'directory' ? '[D]' : '[F]';
 
   return (
     <Box>
       <Text dimColor>{indent}</Text>
       <Text
+        wrap="truncate-end"
         color={isSelected ? 'cyan' : isModified ? 'yellow' : 'white'}
         bold={isSelected}
         inverse={isSelected}
@@ -41,12 +64,28 @@ function FileTreeItem({
 export function FileTree({
   structure,
   modifiedFiles = [],
+  viewportRows = 12,
 }: {
   structure?: FileNode;
   modifiedFiles?: string[];
+  viewportRows?: number;
 }) {
-  const { selectedFile, focusedPanel } = useStore();
-  const isFocused = focusedPanel === 'files';
+  const { selectedFile, scrollOffsets, setScrollOffset } = useStore();
+  const rows = Math.max(4, viewportRows);
+  const flatRows = structure ? flattenTree(structure) : [];
+  const showCount = flatRows.length > rows;
+  const showModified = modifiedFiles.length > 0;
+  const footerRows = (showCount ? 1 : 0) + (showModified ? 1 : 0);
+  const contentRows = Math.max(2, rows - footerRows);
+  const maxOffset = Math.max(0, flatRows.length - contentRows);
+  const offsetRaw = scrollOffsets.files;
+  const offset = Math.min(maxOffset, Math.max(0, offsetRaw));
+
+  useEffect(() => {
+    if (offset !== offsetRaw) {
+      setScrollOffset('files', offset);
+    }
+  }, [offset, offsetRaw, setScrollOffset]);
 
   if (!structure) {
     return (
@@ -56,35 +95,27 @@ export function FileTree({
     );
   }
 
-  const renderNode = (node: FileNode, depth = 0): React.ReactNode => {
-    const isModified = modifiedFiles.includes(node.path);
-    const isSelected = selectedFile === node.path;
-
-    return (
-      <Box key={node.path} flexDirection="column">
-        <FileTreeItem
-          node={node}
-          depth={depth}
-          isSelected={isSelected}
-          isModified={isModified}
-        />
-        {node.children?.map((child) => renderNode(child, depth + 1))}
-      </Box>
-    );
-  };
+  const visibleRows = flatRows.slice(offset, offset + contentRows);
 
   return (
     <Box flexDirection="column" height="100%">
-      <Text bold color={isFocused ? 'cyan' : 'white'}>
-        Files
-      </Text>
-      <Box marginTop={1} flexDirection="column" flexGrow={1} overflow="hidden">
-        {renderNode(structure)}
+      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+        {visibleRows.map((row) => (
+          <FileTreeItem
+            key={row.path}
+            node={row}
+            isSelected={selectedFile === row.path}
+            isModified={modifiedFiles.includes(row.path)}
+          />
+        ))}
       </Box>
-      {modifiedFiles.length > 0 && (
-        <Box marginTop={1}>
-          <Text dimColor>{modifiedFiles.length} modified</Text>
-        </Box>
+      {showCount && (
+        <Text dimColor>
+          files {offset + 1}-{Math.min(flatRows.length, offset + contentRows)} / {flatRows.length}
+        </Text>
+      )}
+      {showModified && (
+        <Text dimColor>{modifiedFiles.length} modified</Text>
       )}
     </Box>
   );

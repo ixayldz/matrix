@@ -5,7 +5,7 @@ import Conf from 'conf';
 import { appendFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import type { AuthProvider, MatrixPlan, QuotaInfo, AuthManager } from '@matrix/auth';
 import {
   runTelemetrySelfTest,
@@ -97,6 +97,50 @@ function normalizeProvider(provider: string): AuthProvider | null {
   const normalized = provider.toLowerCase();
   const validProviders: AuthProvider[] = ['openai', 'anthropic', 'glm', 'minimax', 'kimi'];
   return validProviders.includes(normalized as AuthProvider) ? (normalized as AuthProvider) : null;
+}
+
+const PROVIDER_ENV_VARS: Record<AuthProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  glm: 'GLM_API_KEY',
+  minimax: 'MINIMAX_API_KEY',
+  kimi: 'KIMI_API_KEY',
+};
+
+const PROVIDER_LOGIN_URLS: Record<AuthProvider, string> = {
+  openai: 'https://platform.openai.com/api-keys',
+  anthropic: 'https://console.anthropic.com/settings/keys',
+  glm: 'https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys',
+  minimax: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+  kimi: 'https://platform.moonshot.cn/console/api-keys',
+};
+
+function openExternalUrl(url: string): { success: boolean; error?: string } {
+  try {
+    if (process.platform === 'win32') {
+      const child = spawn('cmd', ['/c', 'start', '', url], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+      return { success: true };
+    }
+
+    const command = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    const child = spawn(command, [url], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.unref();
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unable to open browser automatically.',
+    };
+  }
 }
 
 function maskSecret(secret: string): string {
@@ -614,11 +658,43 @@ export function authCommand(program: Command): void {
   const auth = program.command('auth').description('Authentication commands');
 
   auth
-    .command('login')
-    .description('Login to Matrix account (optional)')
-    .action(async () => {
-      console.log(chalk.yellow('Matrix account login is optional.'));
-      console.log(chalk.dim('You can use Matrix CLI with just provider API keys.'));
+    .command('login [provider]')
+    .description('Open provider login page or show Matrix account login guidance')
+    .option('--open', 'Open provider key page in your default browser')
+    .action(async (providerInput: string | undefined, options: { open?: boolean }) => {
+      if (!providerInput) {
+        console.log(chalk.yellow('Matrix account login is optional.'));
+        console.log(chalk.dim('Use provider keys for model access:'));
+        console.log(chalk.cyan('  matrix auth login openai --open'));
+        console.log(chalk.cyan('  matrix auth add openai --key "<API_KEY>"'));
+        return;
+      }
+
+      const provider = normalizeProvider(providerInput);
+      if (!provider) {
+        console.error(chalk.red(`Unknown provider: ${providerInput}`));
+        console.log(chalk.dim('Valid providers: openai, anthropic, glm, minimax, kimi'));
+        return;
+      }
+
+      const loginUrl = PROVIDER_LOGIN_URLS[provider];
+      const envVar = PROVIDER_ENV_VARS[provider];
+      console.log(chalk.bold(`\n${provider} provider setup\n`));
+      console.log(`  Login / key page: ${chalk.cyan(loginUrl)}`);
+      console.log(`  Environment var: ${envVar}`);
+      console.log(chalk.dim(`  Next: matrix auth add ${provider} --key "<API_KEY>"`));
+
+      if (options.open) {
+        const opened = openExternalUrl(loginUrl);
+        if (opened.success) {
+          console.log(chalk.green('Opened provider page in your default browser.'));
+        } else {
+          console.log(chalk.yellow('Could not open browser automatically. Open the link manually.'));
+          if (opened.error) {
+            console.log(chalk.dim(`Reason: ${opened.error}`));
+          }
+        }
+      }
     });
 
   auth

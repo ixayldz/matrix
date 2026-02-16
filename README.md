@@ -61,6 +61,7 @@ node packages/cli/dist/index.js init --force
 4. Add a provider key:
 
 ```bash
+node packages/cli/dist/index.js auth login openai --open
 node packages/cli/dist/index.js auth add openai --key <API_KEY>
 ```
 
@@ -80,7 +81,7 @@ node packages/cli/dist/index.js run
 
 - `init`: create `.matrix/` project files
 - `run`: start TUI or headless runtime
-- `auth`: login/logout/key/plans flows
+- `auth`: provider login-link, key vault, account status, plans
 - `doctor`: environment health checks
 - `telemetry`: mode, retention, and self-test controls
 - `export-run <runId>`: export redacted run data
@@ -98,12 +99,13 @@ node packages/cli/dist/index.js --help
 
 ## Typical Usage Flow
 
-1. Start with `run`
-2. Draft and approve plan
-3. Implement with diff approvals
-4. Run QA/review/refactor loops
-5. Export run if needed
-6. Validate release gates with readiness checks
+1. Start with `run` and use `/new`
+2. If needed run `/login openai` (or `/auth login openai`) from TUI
+3. Draft and approve plan
+4. Implement with diff approvals
+5. Run QA/review/refactor loops
+6. Export run if needed
+7. Validate release gates with readiness checks
 
 ## Security and Privacy
 
@@ -146,4 +148,3 @@ pnpm security:scan
 ## License
 
 MIT
-

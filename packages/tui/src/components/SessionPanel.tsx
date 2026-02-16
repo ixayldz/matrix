@@ -1,123 +1,29 @@
+import { useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { useStore } from '../store.js';
-import { COLORS, Panel } from './Layout.js';
+import { COLORS } from './Layout.js';
 
-/**
- * Task item component
- */
-function TaskItem({
-  title,
-  status,
-  isActive,
-}: {
-  title: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'blocked';
-  isActive: boolean;
-}) {
-  const statusIcons: Record<'pending' | 'in_progress' | 'completed' | 'blocked', string> = {
-    pending: '○',
-    in_progress: '◐',
-    completed: '●',
-    blocked: '✗',
-  };
-
-  const statusColors: Record<'pending' | 'in_progress' | 'completed' | 'blocked', string> = {
-    pending: COLORS.textDim,
-    in_progress: COLORS.warning,
-    completed: COLORS.primary,
-    blocked: COLORS.error,
-  };
-
-  return (
-    <Box flexDirection="row">
-      <Text color={statusColors[status]}>
-        {isActive ? '▶ ' : '  '}
-        {statusIcons[status]}
-      </Text>
-      <Text
-        color={isActive ? COLORS.primary : COLORS.text}
-        bold={isActive}
-      >
-        {' '}{title.slice(0, 18)}{title.length > 18 ? '...' : ''}
-      </Text>
-    </Box>
-  );
+interface SessionLine {
+  text: string;
+  color?: string;
+  bold?: boolean;
+  dim?: boolean;
 }
 
 /**
- * Agent status indicator
+ * Session panel component - single-layer content renderer.
  */
-function AgentStatus({
-  agent,
-  status,
-  currentTask,
-}: {
-  agent: string;
-  status: 'idle' | 'active' | 'waiting';
-  currentTask?: string;
-}) {
-  const statusColors: Record<'idle' | 'active' | 'waiting', string> = {
-    idle: COLORS.textDim,
-    active: COLORS.primary,
-    waiting: COLORS.warning,
-  };
-
-  const statusLabels: Record<'idle' | 'active' | 'waiting', string> = {
-    idle: 'Idle',
-    active: 'Active',
-    waiting: 'Waiting',
-  };
-
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Box>
-        <Text bold color={COLORS.secondary}>{agent}</Text>
-        <Text color={statusColors[status]}> [{statusLabels[status]}]</Text>
-      </Box>
-      {currentTask && (
-        <Text dimColor>  → {currentTask.slice(0, 25)}...</Text>
-      )}
-    </Box>
-  );
-}
-
-/**
- * Session info component
- */
-function SessionInfo({
-  sessionId,
-  startedAt,
-  runCount,
-}: {
-  sessionId: string;
-  startedAt: string;
-  runCount: number;
-}) {
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text bold color={COLORS.primary}>Session</Text>
-      <Text dimColor>  ID: {sessionId.slice(0, 8)}...</Text>
-      <Text dimColor>  Started: {startedAt}</Text>
-      <Text dimColor>  Turns: {runCount}</Text>
-    </Box>
-  );
-}
-
-/**
- * Session panel component - PRD Section 4.5
- * Left panel with session info, agent state, and task list
- */
-export function SessionPanel() {
+export function SessionPanel({ viewportRows = 10 }: { viewportRows?: number }) {
   const {
     workflowState,
     currentAgent,
-    focusedPanel,
     messages,
     sessionId,
     sessionStartedAt,
+    scrollOffsets,
+    setScrollOffset,
   } = useStore();
 
-  // Session data from runtime
   const session = {
     id: sessionId ?? 'not-started',
     startedAt: sessionStartedAt
@@ -126,8 +32,7 @@ export function SessionPanel() {
     runCount: messages.filter((message) => message.role === 'user').length,
   };
 
-  // Mock agent states
-  const agents: Array<{ name: string; status: 'idle' | 'active' | 'waiting' }> = [
+  const agents: Array<{ name: string; status: 'idle' | 'active' }> = [
     { name: 'Plan Agent', status: currentAgent === 'plan_agent' ? 'active' : 'idle' },
     { name: 'Builder Agent', status: currentAgent === 'builder_agent' ? 'active' : 'idle' },
     { name: 'QA Agent', status: currentAgent === 'qa_agent' ? 'active' : 'idle' },
@@ -135,16 +40,14 @@ export function SessionPanel() {
     { name: 'Refactor Agent', status: currentAgent === 'refactor_agent' ? 'active' : 'idle' },
   ];
 
-  const tasks: Array<{ id: string; title: string; status: 'pending' | 'in_progress' | 'completed' | 'blocked' }> = [
+  const tasks: Array<{ title: string; status: 'pending' | 'in_progress' | 'completed' }> = [
     {
-      id: 'plan',
       title: 'Plan requirements',
       status: ['PRD_INTAKE', 'PRD_CLARIFYING', 'PLAN_DRAFTED', 'AWAITING_PLAN_CONFIRMATION'].includes(workflowState)
         ? 'in_progress'
         : 'completed',
     },
     {
-      id: 'build',
       title: 'Implement changes',
       status: workflowState === 'IMPLEMENTING'
         ? 'in_progress'
@@ -153,7 +56,6 @@ export function SessionPanel() {
           : 'pending',
     },
     {
-      id: 'qa',
       title: 'Run QA',
       status: workflowState === 'QA'
         ? 'in_progress'
@@ -162,7 +64,6 @@ export function SessionPanel() {
           : 'pending',
     },
     {
-      id: 'review',
       title: 'Review and refactor',
       status: ['REVIEW', 'REFACTOR'].includes(workflowState)
         ? 'in_progress'
@@ -172,54 +73,73 @@ export function SessionPanel() {
     },
   ];
 
-  const isFocused = focusedPanel === 'session';
+  const taskIcon: Record<'pending' | 'in_progress' | 'completed', string> = {
+    pending: '[ ]',
+    in_progress: '[~]',
+    completed: '[*]',
+  };
+  const taskColor: Record<'pending' | 'in_progress' | 'completed', string> = {
+    pending: COLORS.textDim,
+    in_progress: COLORS.warning,
+    completed: COLORS.primary,
+  };
+
+  const lines: SessionLine[] = [
+    { text: 'Session', bold: true, color: COLORS.primary },
+    { text: `ID: ${session.id.slice(0, 8)}...`, dim: true },
+    { text: `Started: ${session.startedAt}`, dim: true },
+    { text: `Turns: ${session.runCount}`, dim: true },
+    { text: '------------------------', dim: true },
+    { text: 'Agents', bold: true, color: COLORS.primary },
+    ...agents.map((agent) => ({
+      text: `${agent.status === 'active' ? '>' : ' '} [A] ${agent.name} (${agent.status})`,
+      color: agent.status === 'active' ? COLORS.primary : COLORS.text,
+    })),
+    { text: '------------------------', dim: true },
+    { text: 'Tasks', bold: true, color: COLORS.primary },
+    ...tasks.map((task) => ({
+      text: `${taskIcon[task.status]} ${task.title}`,
+      color: taskColor[task.status],
+    })),
+    { text: `State: ${workflowState}`, color: COLORS.warning },
+  ];
+
+  const rows = Math.max(6, viewportRows);
+  const showIndicator = lines.length > rows;
+  const contentRows = Math.max(3, rows - (showIndicator ? 1 : 0));
+  const maxOffset = Math.max(0, lines.length - contentRows);
+  const offsetRaw = scrollOffsets.session;
+  const offset = Math.min(maxOffset, Math.max(0, offsetRaw));
+
+  useEffect(() => {
+    if (offset !== offsetRaw) {
+      setScrollOffset('session', offset);
+    }
+  }, [offset, offsetRaw, setScrollOffset]);
+
+  const visibleLines = lines.slice(offset, offset + contentRows);
 
   return (
-    <Panel title="Session" width="100%" focused={isFocused}>
-      {/* Session Info */}
-      <SessionInfo
-        sessionId={session.id}
-        startedAt={session.startedAt}
-        runCount={session.runCount}
-      />
-
-      {/* Divider */}
-      <Box borderStyle="single" borderColor={COLORS.border} />
-
-      {/* Agent States */}
-      <Box flexDirection="column" marginY={1}>
-        <Text bold color={COLORS.primary}>Agents</Text>
-        {agents.map((agent) => (
-          <AgentStatus
-            key={agent.name}
-            agent={agent.name}
-            status={agent.status}
-          />
+    <Box flexDirection="column" height="100%">
+      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+        {visibleLines.map((line, index) => (
+          <Text
+            key={`${line.text}-${index}`}
+            wrap="truncate-end"
+            {...(line.color ? { color: line.color } : {})}
+            {...(line.bold ? { bold: true } : {})}
+            {...(line.dim ? { dimColor: true } : {})}
+          >
+            {line.text}
+          </Text>
         ))}
       </Box>
-
-      {/* Divider */}
-      <Box borderStyle="single" borderColor={COLORS.border} />
-
-      {/* Task List */}
-      <Box flexDirection="column" marginY={1}>
-        <Text bold color={COLORS.primary}>Tasks</Text>
-        {tasks.map((task, index) => (
-          <TaskItem
-            key={task.id}
-            title={task.title}
-            status={task.status}
-            isActive={index === tasks.findIndex((entry) => entry.status === 'in_progress')}
-          />
-        ))}
-      </Box>
-
-      {/* Workflow State */}
-      <Box marginTop={1}>
-        <Text dimColor>State: </Text>
-        <Text color={COLORS.warning}>{workflowState}</Text>
-      </Box>
-    </Panel>
+      {showIndicator && (
+        <Text dimColor>
+          session {offset + 1}-{Math.min(lines.length, offset + contentRows)} / {lines.length}
+        </Text>
+      )}
+    </Box>
   );
 }
 

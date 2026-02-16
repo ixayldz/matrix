@@ -8,6 +8,7 @@ function createContext(initialState: WorkflowState = 'PRD_INTAKE'): CommandConte
     workflowState: initialState,
     currentAgent: null,
     currentModel: 'gpt-5.3-codex',
+    currentProvider: 'openai',
     messages: [],
     modifiedFiles: [],
     pendingDiffs: [],
@@ -19,6 +20,9 @@ function createContext(initialState: WorkflowState = 'PRD_INTAKE'): CommandConte
     },
     setCurrentModel: (model) => {
       context.currentModel = model;
+    },
+    setCurrentProvider: (provider) => {
+      context.currentProvider = provider;
     },
     clearMessages: () => {
       context.messages = [];
@@ -56,6 +60,7 @@ describe('TUI command compatibility', () => {
       'stop',
       'model',
       'auth',
+      'login',
       'quota',
       'telemetry',
       'tools',

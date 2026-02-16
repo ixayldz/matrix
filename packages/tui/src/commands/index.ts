@@ -10,6 +10,18 @@
  */
 
 import type { WorkflowState, AgentType } from '@matrix/core';
+import {
+  getProviderAuthSnapshot,
+  hasProviderEnvKey,
+  inferProviderFromModel,
+  isProviderName,
+  PROVIDERS,
+  PROVIDER_DEFAULT_MODEL,
+  PROVIDER_ENV_VAR,
+  PROVIDER_LOGIN_URL,
+  setAndPersistProviderKey,
+  type ProviderName,
+} from '../auth/provider-auth.js';
 
 /**
  * Command result
@@ -47,7 +59,9 @@ export type CommandAction =
   | 'start_refactor'
   | 'stop_agent'
   | 'change_model'
+  | 'change_provider'
   | 'show_auth'
+  | 'open_auth_link'
   | 'show_quota'
   | 'set_telemetry'
   | 'show_tools'
@@ -75,6 +89,7 @@ export interface CommandContext {
   workflowState: WorkflowState;
   currentAgent: AgentType | null;
   currentModel: string;
+  currentProvider: ProviderName;
   messages: Array<{ role: string; content: string }>;
   modifiedFiles: string[];
   pendingDiffs: Array<{
@@ -87,6 +102,7 @@ export interface CommandContext {
   setWorkflowState: (state: WorkflowState) => void;
   setCurrentAgent: (agent: AgentType | null) => void;
   setCurrentModel: (model: string) => void;
+  setCurrentProvider: (provider: ProviderName) => void;
   clearMessages: () => void;
   setStatusMessage: (message: string) => void;
   setError: (error: string | null) => void;
@@ -107,7 +123,7 @@ export const COMMANDS: CommandDefinition[] = [
       context.setCurrentAgent(null);
       return {
         success: true,
-        message: 'New session started',
+        message: 'New session started. Next: /plan to draft a plan or /login to connect a provider.',
         action: 'new_session',
       };
     },
@@ -594,9 +610,11 @@ Usage: /context policy <auto|strict|minimal>`,
         return {
           success: true,
           message: `Current model: ${context.currentModel}
+Current provider: ${context.currentProvider}
 
 Available models:
   - gpt-5.3-codex (OpenAI)
+  - claude-3-7-sonnet (Anthropic)
   - glm-5 (GLM)
   - minimax-2.5 (MiniMax)
   - kimi-k2.5 (Kimi)
@@ -606,7 +624,7 @@ Usage: /model <model-name>`,
       }
 
       const newModel = args[0];
-      const validModels = ['gpt-5.3-codex', 'glm-5', 'minimax-2.5', 'kimi-k2.5'];
+      const validModels = ['gpt-5.3-codex', 'claude-3-7-sonnet', 'glm-5', 'minimax-2.5', 'kimi-k2.5'];
 
       if (!validModels.includes(newModel || '')) {
         return {
@@ -615,32 +633,195 @@ Usage: /model <model-name>`,
         };
       }
 
+      const provider = inferProviderFromModel(newModel!);
       context.setCurrentModel(newModel!);
+      context.setCurrentProvider(provider);
       return {
         success: true,
-        message: `Model changed to: ${newModel}`,
+        message: `Model changed to: ${newModel} (${provider})`,
         action: 'change_model',
-        data: { model: newModel },
+        data: { model: newModel, provider },
       };
     },
   },
   {
     name: 'auth',
-    description: 'Show authentication status',
+    description: 'Check auth status, open provider login link, and store API key',
+    usage: '/auth [status|use <provider>|login [provider]|set <provider> <api-key>]',
     category: 'model',
-    handler: (_args, _context) => {
-      return {
-        success: true,
-        message: `Authentication Status:
+    handler: async (args, context) => {
+      const subCommand = args[0]?.toLowerCase();
+
+      if (!subCommand || subCommand === 'status') {
+        const snapshots = await Promise.all(PROVIDERS.map((provider) => getProviderAuthSnapshot(provider)));
+        const lines = snapshots.map((snapshot) => {
+          const source = snapshot.hasEnvKey && snapshot.hasVaultKey
+            ? 'env+vault'
+            : snapshot.hasVaultKey
+              ? 'vault'
+              : snapshot.hasEnvKey
+                ? 'env'
+                : 'none';
+          const status = snapshot.isAuthenticated ? '[SET]' : '[MISSING]';
+          return `  - ${snapshot.provider.padEnd(9)} ${status} (${snapshot.envVar}, source: ${source})`;
+        });
+
+        const activeProvider = context.currentProvider;
+        const activeEnvVar = PROVIDER_ENV_VAR[activeProvider];
+        const activeSnapshot = snapshots.find((snapshot) => snapshot.provider === activeProvider);
+        const activeReady = activeSnapshot?.isAuthenticated ?? hasProviderEnvKey(activeProvider);
+
+        return {
+          success: true,
+          message: `Authentication Status:
+
+Current provider: ${activeProvider}
+Current model: ${context.currentModel}
+Active key: ${activeReady ? 'available' : `missing (${activeEnvVar})`}
 
 Provider API Keys:
-  - OPENAI_API_KEY: Check with 'matrix auth status'
-  - GLM_API_KEY: Check with 'matrix auth status'
-  - MINIMAX_API_KEY: Check with 'matrix auth status'
-  - KIMI_API_KEY: Check with 'matrix auth status'
+${lines.join('\n')}
 
-Use 'matrix auth add <provider>' to add keys.`,
+Use:
+  /auth use <provider>           -> switch provider/model preset
+  /auth login [provider]         -> open provider login/key page link
+  /auth set <provider> <api-key> -> store key (vault + current process)
+  matrix auth add <provider>     -> persistent secure add from shell`,
+          action: 'show_auth',
+          data: {
+            provider: activeProvider,
+            model: context.currentModel,
+            activeKeyAvailable: activeReady,
+          },
+        };
+      }
+
+      if (subCommand === 'use') {
+        const providerArg = args[1]?.toLowerCase();
+        if (!isProviderName(providerArg)) {
+          return {
+            success: false,
+            error: `Invalid provider: ${args[1] ?? '(missing)'}. Valid providers: ${PROVIDERS.join(', ')}`,
+          };
+        }
+
+        const provider = providerArg;
+        const nextModel = PROVIDER_DEFAULT_MODEL[provider];
+        context.setCurrentProvider(provider);
+        context.setCurrentModel(nextModel);
+
+        const snapshot = await getProviderAuthSnapshot(provider);
+        const loginUrl = PROVIDER_LOGIN_URL[provider];
+        return {
+          success: true,
+          message: snapshot.isAuthenticated
+            ? `Provider switched to ${provider}. Model preset: ${nextModel}.`
+            : `Provider switched to ${provider}. Missing ${PROVIDER_ENV_VAR[provider]} key.\nLogin link: ${loginUrl}\nThen run: /auth set ${provider} <API_KEY>`,
+          action: 'change_provider',
+          data: {
+            provider,
+            model: nextModel,
+            keyAvailable: snapshot.isAuthenticated,
+          },
+        };
+      }
+
+      if (subCommand === 'login' || subCommand === 'link') {
+        const providerArg = args[1]?.toLowerCase();
+        const provider = isProviderName(providerArg) ? providerArg : context.currentProvider;
+        const loginUrl = PROVIDER_LOGIN_URL[provider];
+        const envVar = PROVIDER_ENV_VAR[provider];
+        const snapshot = await getProviderAuthSnapshot(provider);
+
+        return {
+          success: true,
+          message: snapshot.isAuthenticated
+            ? `${provider} already authenticated. You can use model: ${context.currentModel}`
+            : `Open this link and sign in: ${loginUrl}\nCreate/copy API key, then run:\n/auth set ${provider} <API_KEY>\n(Env var: ${envVar})`,
+          action: 'open_auth_link',
+          data: {
+            provider,
+            url: loginUrl,
+            envVar,
+          },
+        };
+      }
+
+      if (subCommand === 'set') {
+        const providerArg = args[1]?.toLowerCase();
+        if (!isProviderName(providerArg)) {
+          return {
+            success: false,
+            error: `Invalid provider: ${args[1] ?? '(missing)'}. Valid providers: ${PROVIDERS.join(', ')}`,
+          };
+        }
+
+        const provider = providerArg;
+        const rawKey = args.slice(2).join(' ').trim();
+        if (!rawKey) {
+          return {
+            success: false,
+            error: 'API key required. Usage: /auth set <provider> <api-key>',
+          };
+        }
+
+        const persisted = await setAndPersistProviderKey(provider, rawKey);
+        if (!persisted.success) {
+          return {
+            success: false,
+            error: persisted.error ?? 'Failed to store API key.',
+          };
+        }
+
+        context.setCurrentProvider(provider);
+
+        return {
+          success: true,
+          message: `${provider} key stored successfully (${PROVIDER_ENV_VAR[provider]}).`,
+          action: 'show_auth',
+          data: {
+            provider,
+            keyAvailable: true,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        message: `Usage:
+  /auth
+  /auth status
+  /auth use <provider>
+  /auth login [provider]
+  /auth set <provider> <api-key>`,
         action: 'show_auth',
+      };
+    },
+  },
+  {
+    name: 'login',
+    aliases: ['link'],
+    description: 'Open provider login/key page link',
+    usage: '/login [provider]',
+    category: 'model',
+    handler: async (args, context) => {
+      const providerArg = args[0]?.toLowerCase();
+      const provider = isProviderName(providerArg) ? providerArg : context.currentProvider;
+      const loginUrl = PROVIDER_LOGIN_URL[provider];
+      const envVar = PROVIDER_ENV_VAR[provider];
+      const snapshot = await getProviderAuthSnapshot(provider);
+
+      return {
+        success: true,
+        message: snapshot.isAuthenticated
+          ? `${provider} already authenticated. Current model: ${context.currentModel}`
+          : `Open this link and sign in: ${loginUrl}\nThen run:\n/auth set ${provider} <API_KEY>\n(Env var: ${envVar})`,
+        action: 'open_auth_link',
+        data: {
+          provider,
+          url: loginUrl,
+          envVar,
+        },
       };
     },
   },

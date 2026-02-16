@@ -86,6 +86,7 @@ export function Panel({
     <Box
       flexDirection="column"
       width={width}
+      height="100%"
       borderStyle="single"
       borderColor={focused ? COLORS.primary : COLORS.border}
       paddingX={1}
@@ -109,18 +110,33 @@ export function SplitLayout({
   left,
   center,
   right,
+  leftWidth = 26,
+  rightWidth = 34,
 }: {
   left?: React.ReactNode;
   center: React.ReactNode;
   right?: React.ReactNode;
+  leftWidth?: number;
+  rightWidth?: number;
 }) {
+  const hasLeft = Boolean(left);
+  const hasRight = Boolean(right);
+
   return (
-    <>
-      {left && <Box width="20%">{left}</Box>}
-      <Box width={left && right ? '60%' : left || right ? '80%' : '100%'}>
+    <Box flexDirection="row" width="100%" height="100%">
+      {hasLeft && (
+        <Box width={leftWidth} minWidth={20} flexShrink={0} marginRight={1}>
+          {left}
+        </Box>
+      )}
+      <Box flexGrow={1} minWidth={40}>
         {center}
       </Box>
-      {right && <Box width="20%">{right}</Box>}
-    </>
+      {hasRight && (
+        <Box width={rightWidth} minWidth={24} flexShrink={0} marginLeft={1}>
+          {right}
+        </Box>
+      )}
+    </Box>
   );
 }

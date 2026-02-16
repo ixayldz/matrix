@@ -8,6 +8,7 @@ function createContext(initialState: WorkflowState): CommandContext {
     workflowState: initialState,
     currentAgent: null,
     currentModel: 'gpt-5.3-codex',
+    currentProvider: 'openai',
     messages: [],
     modifiedFiles: [],
     pendingDiffs: [],
@@ -19,6 +20,9 @@ function createContext(initialState: WorkflowState): CommandContext {
     },
     setCurrentModel: (model) => {
       context.currentModel = model;
+    },
+    setCurrentProvider: (provider) => {
+      context.currentProvider = provider;
     },
     clearMessages: () => {
       context.messages = [];
@@ -106,5 +110,51 @@ describe('TUI command flow', () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe('error');
     expect(result.error).toContain('Unknown command');
+  });
+
+  it('switches provider and model preset with /auth use', async () => {
+    const context = createContext('PRD_INTAKE');
+    const result = await executeCommand('/auth use glm', context);
+
+    expect(result.success).toBe(true);
+    expect(context.currentProvider).toBe('glm');
+    expect(context.currentModel).toBe('glm-5');
+  });
+
+  it('sets provider key in process env with /auth set', async () => {
+    const context = createContext('PRD_INTAKE');
+    const previous = process.env.OPENAI_API_KEY;
+    const longKey = 'sk-test-key-12345678901234567890';
+
+    try {
+      const result = await executeCommand(`/auth set openai ${longKey}`, context);
+      expect(result.success).toBe(true);
+      expect(process.env.OPENAI_API_KEY).toBe(longKey);
+      expect(context.currentProvider).toBe('openai');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previous;
+      }
+    }
+  });
+
+  it('returns provider login link with /auth login', async () => {
+    const context = createContext('PRD_INTAKE');
+    const result = await executeCommand('/auth login openai', context);
+
+    expect(result.success).toBe(true);
+    expect(result.action).toBe('open_auth_link');
+    expect(result.message).toContain('https://platform.openai.com/api-keys');
+  });
+
+  it('supports /login shortcut command', async () => {
+    const context = createContext('PRD_INTAKE');
+    const result = await executeCommand('/login openai', context);
+
+    expect(result.success).toBe(true);
+    expect(result.action).toBe('open_auth_link');
+    expect(result.message).toContain('https://platform.openai.com/api-keys');
   });
 });

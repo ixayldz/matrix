@@ -221,6 +221,9 @@ importers:
 
   packages/tui:
     dependencies:
+      '@matrix/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@matrix/context-engine':
         specifier: workspace:*
         version: link:../context-engine
